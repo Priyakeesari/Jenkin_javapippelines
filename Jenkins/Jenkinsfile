@@ -1,28 +1,72 @@
-pipeline {
+ pipeline {
     agent any
-    options {
-        skipStagesAfterUnstable()
+
+    tools {
+        maven 'maven-3.9.6'
     }
+
+    parameters {
+        choice(
+            name: 'Deploy_Through',
+            choices:"Branch\nImage",
+            description: "You wanna deploy through Branch / Image!")
+        string(
+            name: 'BRANCH',
+            defaultValue: 'main',
+            description: 'Git branch you want to deploy'
+        )
+    }
+
+    environment {
+        REMOTE_HOST = 'ec2-user@3.80.159.120'
+        REMOTE_APP_DIR = '/home/ec2-user/app'
+        JAR_NAME = 'hello-world-web-1.0.0.jar'
+    }
+
     stages {
-        stage('Build') {
+        stage('Checkout Code') {
             steps {
-                sh 'mvn -B -DskipTests clean package'
+                // Uses GitSCM to checkout specific branch passed as parameter
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: "*/${params.BRANCH}"]],
+                    userRemoteConfigs: [[url: 'https://github.com/Priyakeesari/Jenkin_java.git']]
+                ])
             }
         }
-        stage('Test') {
+
+        stage('Build with Maven') {
             steps {
-                sh 'mvn test'
-            }
-            post {
-                always {
-                    junit 'target/surefire-reports/*.xml'
-                }
+                sh 'mvn clean package'
             }
         }
-        stage('Deliver') { 
+
+        stage('Copy JAR to Remote EC2') {
             steps {
-                sh './jenkins/scripts/deliver.sh' 
+                sh """
+                    echo "Local user running this SSH: \$(whoami)"
+                    ssh -o StrictHostKeyChecking=no ${REMOTE_HOST} "mkdir -p ${REMOTE_APP_DIR}"
+                    scp -o StrictHostKeyChecking=no target/${JAR_NAME} ${REMOTE_HOST}:${REMOTE_APP_DIR}/
+                """
             }
+        }
+
+        stage('Run Java App on Remote EC2') {
+            steps {
+                sh """
+                    ssh -o StrictHostKeyChecking=no ${REMOTE_HOST} "pkill java || true" 
+                    ssh -o StrictHostKeyChecking=no ${REMOTE_HOST} "nohup java -jar ${REMOTE_APP_DIR}/${JAR_NAME} > ${REMOTE_APP_DIR}/app.log 2>&1 &"
+                """
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Deployment successful to ${REMOTE_HOST}"
+        }
+        failure {
+            echo "❌ Deployment failed"
         }
     }
 }
