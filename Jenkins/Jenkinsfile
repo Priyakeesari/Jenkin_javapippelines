@@ -30,7 +30,7 @@
                 checkout([
                     $class: 'GitSCM',
                     branches: [[name: "*/${params.BRANCH}"]],
-                    userRemoteConfigs: [[url: 'https://github.com/Priyakeesari/Jenkin_java.git']]
+                    userRemoteConfigs: [[url: 'https://github.com/Priyakeesari/Jenkin_javapippelines.git']]
                 ])
             }
         }
